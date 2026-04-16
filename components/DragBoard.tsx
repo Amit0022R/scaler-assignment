@@ -1,0 +1,392 @@
+"use client"
+
+import { useState } from "react"
+import {
+  DragDropContext,
+  Droppable,
+  Draggable
+} from "@hello-pangea/dnd"
+import { supabase } from "@/lib/supabase"
+
+export default function DragBoard({
+  lists = [],
+  cards = [],
+  handleDragEnd,
+  fetchData,
+  boardId,
+  search = "",
+  selectedLabel = "",
+  dueFilter = ""
+}: any) {
+
+  const [selectedCard, setSelectedCard] = useState<any>(null)
+  const [desc, setDesc] = useState("")
+
+  const [checklist, setChecklist] = useState<any[]>([])
+  const [newItem, setNewItem] = useState("")
+
+  return (
+    <>
+      <DragDropContext onDragEnd={handleDragEnd}>
+
+        {/* LIST CONTAINER */}
+        <Droppable droppableId="lists" direction="horizontal" type="list">
+          {(listDrop) => (
+            <div
+              ref={listDrop.innerRef}
+              {...listDrop.droppableProps}
+              className="flex gap-6 overflow-x-auto px-6 pb-6"
+            >
+
+              {lists.map((list: any, index: number) => (
+
+                <Draggable key={list.id} draggableId={String(list.id)} index={index}>
+                  {(listDrag) => (
+                    <div
+                      ref={listDrag.innerRef}
+                      {...listDrag.draggableProps}
+                      style={listDrag.draggableProps.style}
+                    >
+
+                      {/* LIST BOX */}
+                      <div className="bg-white/90 backdrop-blur-md rounded-xl p-4 w-72 border border-gray-200 shadow-md">
+
+                        {/* HEADER */}
+                        <div className="flex justify-between items-center mb-4">
+
+                          <div
+                            {...listDrag.dragHandleProps}
+                            className="cursor-grab text-gray-400 text-xs"
+                          >
+                            ⠿
+                          </div>
+
+                          <h2
+                            className="font-semibold text-gray-900 text-sm cursor-pointer"
+                            onClick={async () => {
+                              const newTitle = prompt("Edit list title", list.title)
+                              if (!newTitle) return
+
+                              await supabase
+                                .from("lists")
+                                .update({ title: newTitle })
+                                .eq("id", list.id)
+
+                              fetchData()
+                            }}
+                          >
+                            {list.title}
+                          </h2>
+
+                          <button
+                            className="text-red-500 text-xs"
+                            onClick={async () => {
+                              await supabase.from("cards").delete().eq("list_id", list.id)
+                              await supabase.from("lists").delete().eq("id", list.id)
+                              fetchData()
+                            }}
+                          >
+                            🗑
+                          </button>
+                        </div>
+
+                        {/* CARDS */}
+                        <Droppable droppableId={String(list.id)} type="card">
+                          {(cardDrop) => (
+                            <div
+                              ref={cardDrop.innerRef}
+                              {...cardDrop.droppableProps}
+                              className="space-y-2"
+                            >
+
+                              {cards
+                                .filter((c: any) => {
+                                    if (c.list_id !== list.id) return false
+
+                                    if (search && !c.title.toLowerCase().includes(search.toLowerCase())) {
+                                      return false
+                                    }
+
+                                    if (selectedLabel && (!c.labels || !c.labels.includes(selectedLabel))) {
+                                      return false
+                                    }
+
+                                    if (dueFilter && c.due_date !== dueFilter) {
+                                      return false
+                                    }
+
+                                    return true
+                                })
+                                .sort((a: any, b: any) => a.position - b.position)
+                                .map((card: any, index: number) => (
+
+                                  <Draggable
+                                    key={card.id}
+                                    draggableId={String(card.id)}
+                                    index={index}
+                                  >
+                                    {(cardDrag, snapshot) => (
+                                      <div
+                                        ref={cardDrag.innerRef}
+                                        {...cardDrag.draggableProps}
+                                        style={{
+                                          ...cardDrag.draggableProps.style,
+                                          opacity: 1
+                                        }}
+                                        className={`bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex justify-between items-start hover:shadow-md hover:bg-white transition ${
+                                          snapshot.isDragging ? "shadow-lg" : ""
+                                        }`}
+                                      >
+
+                                        {/* LEFT */}
+                                        <div className="flex flex-col">
+
+                                          {/* LABELS */}
+                                          {card.labels && card.labels.length > 0 && (
+                                            <div className="flex gap-1 mb-1">
+                                              {card.labels.map((color: string, i: number) => (
+                                                <span
+                                                  key={i}
+                                                  className="w-5 h-2 rounded"
+                                                  style={{ backgroundColor: color }}
+                                                />
+                                              ))}
+                                            </div>
+                                          )}
+
+                                          <span
+                                            className="text-gray-800 text-sm font-semibold cursor-pointer"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+
+                                              setSelectedCard(card)
+                                              setDesc(card.description || "")
+                                              setChecklist(card.checklist || [])
+                                            }}
+                                          >
+                                            {card.title}
+                                          </span>
+
+                                          {card.description && (
+                                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                                              {card.description}
+                                            </p>
+                                          )}
+
+                                          {card.due_date && (
+                                            <span className="text-xs text-red-500 mt-1">
+                                              📅 {card.due_date}
+                                            </span>
+                                          )}
+
+                                        </div>
+
+                                        {/* DRAG HANDLE */}
+                                        <div
+                                          {...cardDrag.dragHandleProps}
+                                          className="cursor-grab text-gray-400 text-xs mt-1"
+                                        >
+                                          ⠿
+                                        </div>
+
+                                      </div>
+                                    )}
+                                  </Draggable>
+                                ))}
+
+                              {cardDrop.placeholder}
+                            </div>
+                          )}
+                        </Droppable>
+
+                        {/* ADD CARD */}
+                        <button
+                          className="mt-4 text-sm text-blue-600"
+                          onClick={async () => {
+                            const title = prompt("Card title")
+                            if (!title) return
+
+                            await supabase.from("cards").insert({
+                              title,
+                              list_id: list.id,
+                              position: cards.filter((c: any) => c.list_id === list.id).length
+                            })
+
+                            fetchData()
+                          }}
+                        >
+                          + Add Card
+                        </button>
+
+                      </div>
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+
+              {listDrop.placeholder}
+
+            </div>
+          )}
+        </Droppable>
+
+      </DragDropContext>
+
+     {/* MODAL */}
+{selectedCard && (
+  <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+
+    <div className="bg-white w-[420px] p-6 rounded-xl shadow-lg">
+
+      <h2 className="text-lg font-semibold mb-4 text-gray-900">
+        {selectedCard.title}
+      </h2>
+
+      {/* DESCRIPTION */}
+      <textarea
+        value={desc}
+        onChange={(e) => setDesc(e.target.value)}
+        placeholder="Add description..."
+        className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-900"
+        rows={4}
+      />
+
+      {/* DUE DATE */}
+      <input
+        type="date"
+        value={selectedCard?.due_date || ""}
+        onChange={(e) =>
+          setSelectedCard({
+            ...selectedCard,
+            due_date: e.target.value
+          })
+        }
+        className="w-full mt-3 border border-gray-300 rounded-lg p-2 text-sm text-gray-900"
+      />
+
+      {/* LABELS */}
+      <div className="mt-4">
+        <p className="text-sm font-medium text-gray-700 mb-2">Labels</p>
+
+        <div className="flex gap-2">
+          {["red", "green", "blue", "yellow"].map((color) => {
+            const isSelected = selectedCard.labels?.includes(color)
+
+            return (
+              <div
+                key={color}
+                onClick={() => {
+                  let updated = selectedCard.labels || []
+
+                  if (isSelected) {
+                    updated = updated.filter((l: string) => l !== color)
+                  } else {
+                    updated = [...updated, color]
+                  }
+
+                  setSelectedCard({
+                    ...selectedCard,
+                    labels: updated
+                  })
+                }}
+                className={`w-6 h-6 rounded cursor-pointer border-2 ${
+                  isSelected ? "border-black" : "border-transparent"
+                }`}
+                style={{ backgroundColor: color }}
+              />
+            )
+          })}
+        </div>
+      </div>
+
+      {/* CHECKLIST */}
+      <div className="mt-4">
+        <p className="text-sm font-medium text-gray-700 mb-2">Checklist</p>
+
+        {/* ADD ITEM */}
+        <div className="flex gap-2 mb-2">
+          <input
+            value={newItem}
+            onChange={(e) => setNewItem(e.target.value)}
+            placeholder="Add item..."
+            className="flex-1 border border-gray-300 rounded-lg px-2 py-1 text-sm text-gray-900"
+          />
+          <button
+            onClick={() => {
+              if (!newItem) return
+              setChecklist([
+                ...checklist,
+                { text: newItem, done: false }
+              ])
+              setNewItem("")
+            }}
+            className="text-xs bg-blue-600 text-white px-2 rounded"
+          >
+            Add
+          </button>
+        </div>
+
+        {/* ITEMS */}
+        <div className="space-y-1 max-h-32 overflow-y-auto">
+          {checklist.map((item: any, i: number) => (
+            <div key={i} className="flex items-center gap-2 text-sm">
+
+              <input
+                type="checkbox"
+                checked={item.done}
+                onChange={() => {
+                  const updated = [...checklist]
+                  updated[i].done = !updated[i].done
+                  setChecklist(updated)
+                }}
+              />
+
+              <span className={item.done ? "line-through text-gray-400" : ""}>
+                {item.text}
+              </span>
+
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ACTIONS */}
+      <div className="flex justify-end gap-2 mt-5">
+
+        <button
+          className="px-4 py-2 text-sm text-gray-600"
+          onClick={() => setSelectedCard(null)}
+        >
+          Cancel
+        </button>
+
+        <button
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
+          onClick={async () => {
+            await supabase
+              .from("cards")
+              .update({
+                description: desc,
+                due_date: selectedCard.due_date,
+                labels: selectedCard.labels || [],
+                checklist: checklist
+              })
+              .eq("id", selectedCard.id)
+
+            setSelectedCard(null)
+            fetchData()
+          }}
+        >
+          Save
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+)}
+
+    </>
+  )
+}
